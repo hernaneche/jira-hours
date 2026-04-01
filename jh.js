@@ -45,7 +45,7 @@ async function fetchIssues(nextPageToken = null, acc = []) {
   const body = {
     jql: "worklogAuthor = currentUser()",
     maxResults: 50,
-    fields: ["key"],
+    fields: ["key", "summary"],
   };
 
   if (nextPageToken) {
@@ -307,10 +307,11 @@ async function aggregate(range) {
 
   const issues = await fetchIssues();
 
-  // date -> { total: number, issues: Map(issueKey -> number) }
+  // date -> { total: number, issues: Map(issueKey -> { hours, summary }) }
   const map = new Map();
 
   for (const issue of issues) {
+    const summary = (issue.fields?.summary || "").replace(/[\r\n]+/g, " ").trim();
     const logs = await fetchAllWorklogs(issue.key);
 
     for (const log of logs) {
@@ -331,14 +332,19 @@ async function aggregate(range) {
 
       const entry = map.get(date);
       entry.total += hours;
-      entry.issues.set(issue.key, (entry.issues.get(issue.key) || 0) + hours);
+
+      const prev = entry.issues.get(issue.key);
+      entry.issues.set(issue.key, {
+        hours: (prev?.hours || 0) + hours,
+        summary,
+      });
     }
   }
 
   return map;
 }
 
-function print(map, range) {
+function print(map, range, full) {
   console.log(`Range: ${range.fromStr} -> ${range.toStr}`);
 
   const sortedDates = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -358,11 +364,18 @@ function print(map, range) {
       a.localeCompare(b)
     );
 
-    const issuesText = issuesSorted
-      .map(([issueKey, hours]) => `${issueKey} ${formatTicket(hours)}`)
-      .join(" | ");
+    if (full) {
+      console.log(`\n${dayName} ${date}  ${formatTotal(data.total)}`);
+      for (const [issueKey, { hours, summary }] of issuesSorted) {
+        console.log(`  ${issueKey}  ${formatTicket(hours)}  ${summary}`);
+      }
+    } else {
+      const issuesText = issuesSorted
+        .map(([issueKey, { hours }]) => `${issueKey} ${formatTicket(hours)}`)
+        .join(" | ");
 
-    console.log(`${dayName} ${date}  ${formatTotal(data.total)}  | ${issuesText}`);
+      console.log(`${dayName} ${date}  ${formatTotal(data.total)}  | ${issuesText}`);
+    }
   }
 
   const dayWord = sortedDates.length === 1 ? "day" : "days";
@@ -371,9 +384,12 @@ function print(map, range) {
 
 (async () => {
   try {
-    const range = resolveDateRange(process.argv.slice(2));
+    const argv = process.argv.slice(2);
+    const full = argv.includes("--full");
+    const filtered = argv.filter((a) => a !== "--full");
+    const range = resolveDateRange(filtered);
     const map = await aggregate(range);
-    print(map, range);
+    print(map, range, full);
   } catch (err) {
     console.error(err?.message || String(err));
     process.exit(1);

@@ -30,6 +30,13 @@ node jh.js from=01 to=03               # January to March
 node jh.js from=2026-01-15 to=2026-03-20  # exact dates
 ```
 
+Add `--full` for per-ticket details with titles:
+
+```bash
+node jh.js --full
+node jh.js month=03 --full
+```
+
 Date formats: `MM`, `YYYY-MM`, or `YYYY-MM-DD`.
 
 ## Output
