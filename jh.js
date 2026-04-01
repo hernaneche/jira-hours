@@ -270,11 +270,19 @@ function resolveDateRange(argv) {
   };
 }
 
-function formatHM(hoursDecimal) {
+function formatTotal(hoursDecimal) {
   const totalMinutes = Math.round(hoursDecimal * 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return `${hours}h ${minutes}m`;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+}
+
+function formatTicket(hoursDecimal) {
+  const totalMinutes = Math.round(hoursDecimal * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
 function getDayName(dateStr) {
@@ -351,13 +359,14 @@ function print(map, range) {
     );
 
     const issuesText = issuesSorted
-      .map(([issueKey, hours]) => `${issueKey} ${formatHM(hours)}`)
-      .join(", ");
+      .map(([issueKey, hours]) => `${issueKey} ${formatTicket(hours)}`)
+      .join(" | ");
 
-    console.log(`${dayName} ${date}  ${formatHM(data.total)}  [${issuesText}]`);
+    console.log(`${dayName} ${date}  ${formatTotal(data.total)}  | ${issuesText}`);
   }
 
-  console.log(`\nTotal: ${formatHM(grandTotal)} (${sortedDates.length} days)`);
+  const dayWord = sortedDates.length === 1 ? "day" : "days";
+  console.log(`\nTotal: ${formatTotal(grandTotal)} (${sortedDates.length} ${dayWord})`);
 }
 
 (async () => {
