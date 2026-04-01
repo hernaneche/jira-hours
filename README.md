@@ -23,11 +23,11 @@ Get your API token at https://id.atlassian.com/manage-profile/security/api-token
 ## Usage
 
 ```bash
-node jira-hours.js                              # current month
-node jira-hours.js month=03                     # March (current year)
-node jira-hours.js month=2026-01                # January 2026
-node jira-hours.js from=01 to=03               # January to March
-node jira-hours.js from=2026-01-15 to=2026-03-20  # exact dates
+node jh.js                              # current month
+node jh.js month=03                     # March (current year)
+node jh.js month=2026-01                # January 2026
+node jh.js from=01 to=03               # January to March
+node jh.js from=2026-01-15 to=2026-03-20  # exact dates
 ```
 
 Date formats: `MM`, `YYYY-MM`, or `YYYY-MM-DD`.
@@ -42,3 +42,7 @@ Thu 2026-04-02  2h 10m  [PROJ-789 (1h 30m), PROJ-456 (0h 40m)]
 
 Total: 2h 50m (2 days)
 ```
+
+## License
+
+MIT
