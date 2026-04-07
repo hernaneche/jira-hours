@@ -344,21 +344,42 @@ async function aggregate(range) {
   return map;
 }
 
+function allDaysInRange(range) {
+  const days = [];
+  const d = new Date(range.from);
+  while (d <= range.to) {
+    days.push(formatDateUTC(d));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return days;
+}
+
+function isWeekend(dateStr) {
+  const day = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
 function print(map, range, full) {
   console.log(`Range: ${range.fromStr} -> ${range.toStr}`);
 
-  const sortedDates = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-
-  if (sortedDates.length === 0) {
-    console.log("No worklogs found in this range.");
-    return;
-  }
+  const allDays = allDaysInRange(range);
 
   let grandTotal = 0;
+  let workedDays = 0;
 
-  for (const [date, data] of sortedDates) {
+  for (const date of allDays) {
     const dayName = getDayName(date);
+    const data = map.get(date);
+
+    if (!data) {
+      if (!isWeekend(date)) {
+        console.log(`${dayName} ${date}  -`);
+      }
+      continue;
+    }
+
     grandTotal += data.total;
+    workedDays++;
 
     const issuesSorted = [...data.issues.entries()].sort(([a], [b]) =>
       a.localeCompare(b)
@@ -378,8 +399,9 @@ function print(map, range, full) {
     }
   }
 
-  const dayWord = sortedDates.length === 1 ? "day" : "days";
-  console.log(`\nTotal: ${formatTotal(grandTotal)} (${sortedDates.length} ${dayWord})`);
+  const dayWord = workedDays === 1 ? "day" : "days";
+  const avg = workedDays > 0 ? formatTotal(grandTotal / workedDays) : "0h 00m";
+  console.log(`\nTotal: ${formatTotal(grandTotal)} (${workedDays} ${dayWord}, avg ${avg}/day)`);
 }
 
 (async () => {
