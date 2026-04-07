@@ -345,10 +345,13 @@ async function aggregate(range) {
 }
 
 function allDaysInRange(range) {
+  const today = formatDateUTC(new Date());
   const days = [];
   const d = new Date(range.from);
   while (d <= range.to) {
-    days.push(formatDateUTC(d));
+    const str = formatDateUTC(d);
+    if (str > today) break;
+    days.push(str);
     d.setUTCDate(d.getUTCDate() + 1);
   }
   return days;
