@@ -39,6 +39,16 @@ node jh.js month=03 --full
 
 Date formats: `MM`, `YYYY-MM`, or `YYYY-MM-DD`.
 
+### Logging hours
+
+```bash
+node jh.js log EDU-1541 1h30m 2026-04-15
+node jh.js log EDU-1541 45m today
+node jh.js log EDU-1541 2h yesterday "fixing flaky tests"
+```
+
+Shows the ticket title and asks for confirmation before submitting.
+
 ## Output
 
 ```

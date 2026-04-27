@@ -2,6 +2,7 @@
 
 import "dotenv/config";
 import fetch from "node-fetch";
+import { createInterface } from "node:readline";
 
 const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
 
@@ -362,12 +363,13 @@ function isWeekend(dateStr) {
   return day === 0 || day === 6;
 }
 
-function print(map, range, full) {
+function print(map, range, full, sumTicket) {
   console.log(`Range: ${range.fromStr} -> ${range.toStr}`);
 
   const allDays = allDaysInRange(range);
 
   let grandTotal = 0;
+  let sumTicketTotal = 0;
   let workedDays = 0;
 
   for (const date of allDays) {
@@ -383,6 +385,11 @@ function print(map, range, full) {
 
     grandTotal += data.total;
     workedDays++;
+
+    if (sumTicket) {
+      const entry = data.issues.get(sumTicket);
+      if (entry) sumTicketTotal += entry.hours;
+    }
 
     const issuesSorted = [...data.issues.entries()].sort(([a], [b]) =>
       a.localeCompare(b)
@@ -405,16 +412,128 @@ function print(map, range, full) {
   const dayWord = workedDays === 1 ? "day" : "days";
   const avg = workedDays > 0 ? formatTotal(grandTotal / workedDays) : "0h 00m";
   console.log(`\nTotal: ${formatTotal(grandTotal)} (${workedDays} ${dayWord}, avg ${avg}/day)`);
+
+  if (sumTicket) {
+    const rest = grandTotal - sumTicketTotal;
+    const pct = (n) =>
+      grandTotal > 0 ? ` (${((n / grandTotal) * 100).toFixed(1)}%)` : "";
+    console.log(`  ${sumTicket}: ${formatTotal(sumTicketTotal)}${pct(sumTicketTotal)}`);
+    console.log(`  rest:  ${formatTotal(rest)}${pct(rest)}`);
+  }
+}
+
+function parseDuration(spec) {
+  const m = spec.match(/^(?:(\d+)h)?\s*(?:(\d+)m)?$/i);
+  if (!m || (!m[1] && !m[2])) {
+    throw new Error(`Invalid duration "${spec}". Use formats like 1h30m, 45m, 2h`);
+  }
+  const hours = Number(m[1] || 0);
+  const minutes = Number(m[2] || 0);
+  const seconds = hours * 3600 + minutes * 60;
+  if (seconds <= 0) throw new Error(`Duration must be > 0`);
+  return seconds;
+}
+
+function parseLogDate(spec) {
+  if (spec === "today") return formatDateUTC(new Date());
+  if (spec === "yesterday") {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1);
+    return formatDateUTC(d);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(spec)) return spec;
+  throw new Error(`Invalid date "${spec}". Use YYYY-MM-DD, today, or yesterday`);
+}
+
+function prompt(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+async function logWork(args) {
+  const [issueKey, durationSpec, dateSpec, ...commentParts] = args;
+
+  if (!issueKey || !durationSpec) {
+    throw new Error("Usage: node jh.js log <TICKET> <DURATION> [DATE] [comment]");
+  }
+
+  const seconds = parseDuration(durationSpec);
+  const date = parseLogDate(dateSpec || "today");
+  const comment = commentParts.join(" ");
+
+  const issue = await jira(`/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=summary`);
+  const summary = issue.fields?.summary || "(no title)";
+
+  const hoursDecimal = seconds / 3600;
+  console.log(`${issueKey}  "${summary}"`);
+  const promptMsg = `Log ${formatTotal(hoursDecimal)} on ${date}${comment ? ` (${comment})` : ""}? [yes/N]: `;
+  const answer = (await prompt(promptMsg)).trim().toLowerCase();
+
+  if (answer !== "yes") {
+    console.log("Cancelled.");
+    return;
+  }
+
+  const body = {
+    timeSpentSeconds: seconds,
+    started: `${date}T09:00:00.000+0000`,
+  };
+
+  if (comment) {
+    body.comment = {
+      type: "doc",
+      version: 1,
+      content: [{ type: "paragraph", content: [{ type: "text", text: comment }] }],
+    };
+  }
+
+  await jira(`/rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  console.log("Logged.");
 }
 
 (async () => {
   try {
     const argv = process.argv.slice(2);
+
+    if (argv.includes("--help") || argv.includes("-h")) {
+      console.log(`Usage:
+  node jh.js                                    # current month
+  node jh.js month=MM                           # e.g. month=03
+  node jh.js month=YYYY-MM                      # e.g. month=2026-01
+  node jh.js from=<date> to=<date>              # range (MM, YYYY-MM, YYYY-MM-DD)
+  node jh.js [...] --full                       # per-ticket details with titles
+  node jh.js [...] --sum=TICKET                 # subtotal for TICKET vs rest
+
+  node jh.js log|add <TICKET> <DURATION> [DATE] [comment]
+    DURATION: 1h30m, 45m, 2h
+    DATE:     YYYY-MM-DD, today, yesterday (default: today)`);
+      return;
+    }
+
+    if (argv[0] === "log" || argv[0] === "add") {
+      await logWork(argv.slice(1));
+      return;
+    }
+
     const full = argv.includes("--full");
-    const filtered = argv.filter((a) => a !== "--full");
+    const sumArg = argv.find((a) => a.startsWith("--sum="));
+    const sumTicket = sumArg ? sumArg.slice("--sum=".length) : null;
+    const filtered = argv.filter(
+      (a) => a !== "--full" && !a.startsWith("--sum=")
+    );
     const range = resolveDateRange(filtered);
     const map = await aggregate(range);
-    print(map, range, full);
+    print(map, range, full, sumTicket);
   } catch (err) {
     console.error(err?.message || String(err));
     process.exit(1);
